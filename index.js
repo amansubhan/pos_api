@@ -4,12 +4,18 @@ const cors = require('cors')
 const helmet = require('helmet')
 const compression = require('compression')
 const rateLimit = require('express-rate-limit')
-const { body, check } = require('express-validator')
+const { check, validationResult } = require('express-validator')
 const { pool } = require('./config')
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 10, // 10 requests,
 })
+
+const postLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 5,
+})
+
 
 const isProduction = process.env.NODE_ENV === 'production'
 const origin = {
@@ -35,23 +41,45 @@ const getBooks = (request, response) => {
   })
 }
 
-const addBook = (request, response) => {
-  const { author, title } = request.body
 
-  pool.query('INSERT INTO books (author, title) VALUES ($1, $2)', [author, title], error => {
-    if (error) {
-      response.status(500).json({ status: 'failed', message: error })
-    }
-    response.status(201).json({ status: 'success', message: 'Book added.' })
-  })
-}
 
 app
   .route('/books')
   // GET endpoint
   .get(getBooks)
   // POST endpoint
-  .post(addBook)
+  app.post(
+    '/books',
+    [
+      check('author')
+        .not()
+        .isEmpty()
+        .isLength({ min: 5, max: 255 })
+        .trim(),
+      check('title')
+        .not()
+        .isEmpty()
+        .isLength({ min: 5, max: 255 })
+        .trim(),
+    ],
+    postLimiter,
+    (request, response) => {
+      const errors = validationResult(request)
+  
+      if (!errors.isEmpty()) {
+        return response.status(422).json({ errors: errors.array() })
+      }
+  
+      const { author, title } = request.body
+  
+      pool.query('INSERT INTO books (author, title) VALUES ($1, $2)', [author, title], error => {
+        if (error) {
+          throw error
+        }
+        response.status(201).json({ status: 'success', message: 'Book added.' })
+      })
+    }
+  )
 
 // Start server
 app.listen(process.env.PORT || 3002, () => {
