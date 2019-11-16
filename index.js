@@ -40,7 +40,7 @@ const addBook = (request, response) => {
 
   pool.query('INSERT INTO books (author, title) VALUES ($1, $2)', [author, title], error => {
     if (error) {
-      throw error
+      response.status(500).json({ status: 'failed', message: error })
     }
     response.status(201).json({ status: 'success', message: 'Book added.' })
   })
